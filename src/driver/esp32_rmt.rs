@@ -1,7 +1,6 @@
 use esp_idf_sys::*;
 use once_cell::sync::OnceCell;
 use std::cmp::min;
-use std::convert::TryFrom;
 use std::ffi::c_void;
 
 const WS2812_TO0H_NS: u16 = 400;
@@ -48,10 +47,10 @@ impl Ws2812Esp32RmtItemEncoder {
 unsafe extern "C" fn ws2812_rmt_adapter(
     src: *const c_void,
     dest: *mut rmt_item32_t,
-    src_size: u32,
-    wanted_num: u32,
-    translated_size: *mut u32,
-    item_num: *mut u32,
+    src_size: usize,
+    wanted_num: usize,
+    translated_size: *mut usize,
+    item_num: *mut usize,
 ) {
     if src.is_null() || dest.is_null() {
         *translated_size = 0;
@@ -59,7 +58,7 @@ unsafe extern "C" fn ws2812_rmt_adapter(
         return;
     }
 
-    let src_len = min(src_size, wanted_num / 8) as usize;
+    let src_len = min(src_size, wanted_num / 8);
     let src_slice = std::slice::from_raw_parts(src as *const u8, src_len);
     let dest_slice = std::slice::from_raw_parts_mut(dest, src_slice.len() * 8);
 
@@ -67,8 +66,8 @@ unsafe extern "C" fn ws2812_rmt_adapter(
         encoder.encode(src_slice, dest_slice)
     }
 
-    *translated_size = src_slice.len() as _;
-    *item_num = dest_slice.len() as _;
+    *translated_size = src_slice.len();
+    *item_num = dest_slice.len();
 }
 
 /// WS2812 ESP32 RMT Driver error.
@@ -116,7 +115,7 @@ impl Ws2812Esp32RmtDriver {
         };
         esp!(unsafe { rmt_config(&rmt_cfg) })?;
         esp!(unsafe { rmt_driver_install(channel, 0, 0) })?;
-        esp!(unsafe { rmt_translator_init(channel, Some(ws2812_rmt_adapter)) })?;
+        esp!(unsafe { rmt_translator_init(channel, Some(ws2812_rmt_adapter),) })?;
 
         let _encoder =
             WS2812_ITEM_ENCODER.get_or_try_init(|| Ws2812Esp32RmtItemEncoder::new(channel))?;
@@ -138,7 +137,7 @@ impl Ws2812Esp32RmtDriver {
     /// Panics if the given slice is longer than `u32::MAX`.
     pub fn write(&mut self, pixel_data: &[u8]) -> Result<(), Ws2812Esp32RmtDriverError> {
         let data_ptr = pixel_data.as_ptr();
-        let data_len = u32::try_from(pixel_data.len()).expect("pixel_data.len() > u32::MAX");
+        let data_len = pixel_data.len();
         esp!(unsafe { rmt_write_sample(self.channel, data_ptr, data_len, true) })?;
         Ok(())
     }
